@@ -1,160 +1,278 @@
-# EXPLORER AGENT
-# @Author: Tacla, UTFPR
-#
-### It walks randomly in the environment looking for victims. When half of the
-### exploration has gone, the explorer goes back to the base.
+## EXPLORER AGENT
+### @Author: Tacla, UTFPR
+### It walks randomly in the environment looking for victims.
 
+from enum import Enum
+from queue import PriorityQueue
 import sys
 import os
 import random
-import math
 from abc import ABC, abstractmethod
 from vs.abstract_agent import AbstAgent
 from vs.constants import VS
-from map import Map
 
-class Stack:
-    def __init__(self):
-        self.items = []
 
-    def push(self, item):
-        self.items.append(item)
-
-    def pop(self):
-        if not self.is_empty():
-            return self.items.pop()
-
-    def is_empty(self):
-        return len(self.items) == 0
 
 class Explorer(AbstAgent):
-    """ class attribute """
-    MAX_DIFFICULTY = 1             # the maximum degree of difficulty to enter into a cell
+    class State(Enum):
+        EXPLORING = 0
+        RETURNING = 1
     
+    class AC_INCR(Enum):
+        N = (0, -1)
+        NE = (1, -1)
+        E = (1, 0)
+        SE = (1, 1)
+        S = (0, 1)
+        SW = (-1, 1)
+        W = (-1, 0)
+        NW = (-1, -1)
+
     def __init__(self, env, config_file, resc):
         """ Construtor do agente random on-line
-        @param env: a reference to the environment 
-        @param config_file: the absolute path to the explorer's config file
-        @param resc: a reference to the rescuer agent to invoke when exploration finishes
+        @param env referencia o ambiente
+        @config_file: the absolute path to the explorer's config file
+        @param resc referencia o rescuer para poder acorda-lo
         """
-
         super().__init__(env, config_file)
-        self.walk_stack = Stack()  # a stack to store the movements
-        self.walk_time = 0         # time consumed to walk when exploring (to decide when to come back)
-        self.set_state(VS.ACTIVE)  # explorer is active since the begin
-        self.resc = resc           # reference to the rescuer agent
-        self.x = 0                 # current x position relative to the origin 0
-        self.y = 0                 # current y position relative to the origin 0
-        self.map = Map()           # create a map for representing the environment
-        self.victims = {}          # a dictionary of found victims: (seq): ((x,y), [<vs>])
-                                   # the key is the seq number of the victim,(x,y) the position, <vs> the list of vital signals
+        self.set_state(VS.ACTIVE)
 
-        # put the current position - the base - in the map
-        self.map.add((self.x, self.y), 1, VS.NO_VICTIM, self.check_walls_and_lim())
+        # Define the order of exploration (clockwise from North)
+        # this will change for other explorers in the future
+        if self.NAME == 'EXPL_1':
+            self.directions_priorities = [self.AC_INCR.N, self.AC_INCR.NE, self.AC_INCR.E, self.AC_INCR.SE, self.AC_INCR.S, self.AC_INCR.SW, self.AC_INCR.W, self.AC_INCR.NW]
+        if self.NAME == 'EXPL_2':
+            self.directions_priorities = [self.AC_INCR.N, self.AC_INCR.NW, self.AC_INCR.W, self.AC_INCR.SW, self.AC_INCR.S, self.AC_INCR.SE, self.AC_INCR.E, self.AC_INCR.NE]
+        if self.NAME == 'EXPL_3':
+            self.directions_priorities = [self.AC_INCR.S, self.AC_INCR.SW, self.AC_INCR.W, self.AC_INCR.NW, self.AC_INCR.N, self.AC_INCR.NE, self.AC_INCR.E, self.AC_INCR.SE]
+        if self.NAME == 'EXPL_4':
+            self.directions_priorities = [self.AC_INCR.SE, self.AC_INCR.S, self.AC_INCR.E, self.AC_INCR.NE, self.AC_INCR.N, self.AC_INCR.NW, self.AC_INCR.W, self.AC_INCR.SW]
+        self.path = []
+        self.pos = (0,0)
+        self.walls = set()
+        self.victims = set()
+        self.__visited = set()
+        self.state = self.State.EXPLORING
 
-    def get_next_position(self):
-        """ Randomically, gets the next position that can be explored (no wall and inside the grid)
-            There must be at least one CLEAR position in the neighborhood, otherwise it loops forever.
-        """
-        # Check the neighborhood walls and grid limits
-        obstacles = self.check_walls_and_lim()
+        # Heuristics data
+        self.heuristics = {}
+        self.heuristics[(0,0)] = 0
+        self.danger_map = {} # the danger score of each cell
+        self.danger_map[self.pos] = VS.OBST_NONE # TODO: intitializing is necessary, analyze if OBST_NONE is a good value
+        self.max_cost = self.danger_map[self.pos]
+
+        self.resc = resc           # reference to the rescuer agent   
     
-        # Loop until a CLEAR position is found
-        while True:
-            # Get a random direction
-            direction = random.randint(0, 7)
-            # Check if the corresponding position in walls_and_lim is CLEAR
-            if obstacles[direction] == VS.CLEAR:
-                return Explorer.AC_INCR[direction]
-        
-    def explore(self):
-        # get an random increment for x and y       
-        dx, dy = self.get_next_position()
-
-        # Moves the body to another position  
-        rtime_bef = self.get_rtime()
-        result = self.walk(dx, dy)
-        rtime_aft = self.get_rtime()
-
-
-        # Test the result of the walk action
-        # Should never bump, but for safe functionning let's test
-        if result == VS.BUMPED:
-            # update the map with the wall
-            self.map.add((self.x + dx, self.y + dy), VS.OBST_WALL, VS.NO_VICTIM, self.check_walls_and_lim())
-            #print(f"{self.NAME}: Wall or grid limit reached at ({self.x + dx}, {self.y + dy})")
-
-        if result == VS.EXECUTED:
-            # check for victim returns -1 if there is no victim or the sequential
-            # the sequential number of a found victim
-            self.walk_stack.push((dx, dy))
-
-            # update the agent's position relative to the origin
-            self.x += dx
-            self.y += dy
-
-            # update the walk time
-            self.walk_time = self.walk_time + (rtime_bef - rtime_aft)
-            #print(f"{self.NAME} walk time: {self.walk_time}")
-
-            # Check for victims
-            seq = self.check_for_victim()
-            if seq != VS.NO_VICTIM:
-                vs = self.read_vital_signals()
-                self.victims[vs[0]] = ((self.x, self.y), vs)
-                #print(f"{self.NAME} Victim found at ({self.x}, {self.y}), rtime: {self.get_rtime()}")
-                #print(f"{self.NAME} Seq: {seq} Vital signals: {vs}")
-            
-            # Calculates the difficulty of the visited cell
-            difficulty = (rtime_bef - rtime_aft)
-            if dx == 0 or dy == 0:
-                difficulty = difficulty / self.COST_LINE
-            else:
-                difficulty = difficulty / self.COST_DIAG
-
-            # Update the map with the new cell
-            self.map.add((self.x, self.y), difficulty, seq, self.check_walls_and_lim())
-            #print(f"{self.NAME}:at ({self.x}, {self.y}), diffic: {difficulty:.2f} vict: {seq} rtime: {self.get_rtime()}")
-
-        return
-
-    def come_back(self):
-        dx, dy = self.walk_stack.pop()
-        dx = dx * -1
-        dy = dy * -1
-
-        result = self.walk(dx, dy)
-        if result == VS.BUMPED:
-            print(f"{self.NAME}: when coming back bumped at ({self.x+dx}, {self.y+dy}) , rtime: {self.get_rtime()}")
-            return
-        
-        if result == VS.EXECUTED:
-            # update the agent's position relative to the origin
-            self.x += dx
-            self.y += dy
-            #print(f"{self.NAME}: coming back at ({self.x}, {self.y}), rtime: {self.get_rtime()}")
-        
     def deliberate(self) -> bool:
         """ The agent chooses the next action. The simulator calls this
-        method at each cycle. Must be implemented in every agent"""
+        method at each cycle. Must be implemented in every agent
+        Should return False if the agent should stop exploring"""
 
-        # forth and back: go, read the vital signals and come back to the position
+        print(f"\n{self.NAME} deliberate:")
 
-        time_tolerance = 2* self.COST_DIAG * Explorer.MAX_DIFFICULTY + self.COST_READ
+        if self.NAME == 'EXPL_4':
+            print(f"pos: {self.pos}")
 
-        # keeps exploring while there is enough time
-        if  self.walk_time < (self.get_rtime() - time_tolerance):
-            self.explore()
-            return True
-
-        # no more come back walk actions to execute or already at base
-        if self.walk_stack.is_empty() or (self.x == 0 and self.y == 0):
-            # time to pass the map and found victims to the master rescuer
-            self.resc.sync_explorers(self.map, self.victims)
-            # finishes the execution of this agent
-            return False
+        self.__check_walls_and_lim()
+        self.__update_heuristics()
         
-        # proceed to the base
-        self.come_back()
+        if self.pos == (0,0) and self.state == self.State.RETURNING:
+            print(f"{self.NAME} Returned successfully, calling rescuer")
+            self.resc.sync_explorers(self.walls, self.victims, self.danger_map)
+            print(f"{self.NAME}: found {len(self.victims)} victims")
+            sev1 = 0
+            sev2 = 0
+            sev3 = 0
+            sev4 = 0
+            for vic_id in self.victims:
+                if self.get_env().sev_label[vic_id[0]] == 1:
+                    sev1 += 1
+                elif self.get_env().sev_label[vic_id[0]] == 2:
+                    sev2 += 1
+                elif self.get_env().sev_label[vic_id[0]] == 3:
+                    sev3 += 1
+                elif self.get_env().sev_label[vic_id[0]] == 4:
+                    sev4 += 1
+
+            print(f"Severidade 1: {sev1}")
+            print(f"Severidade 2: {sev2}")
+            print(f"Severidade 3: {sev3}")
+            print(f"Severidade 4: {sev4}")
+            print(f"Total de vítimas: {sev1 + sev2 + sev3 + sev4}")
+
+            return False
+
+        # No more actions, time almost ended
+        if self.get_rtime() <= 1.0:
+            # time to wake up the rescuer
+            # pass the walls and the victims 
+            print(f"{self.NAME} No more time to explore... invoking the rescuer")
+            # self.resc.go_save_victims([],[])
+            print(f"found {len(self.victims)} victims")
+            return False
+
+        if self.state == self.State.RETURNING:
+            self.__return_to_base()
+            return True
+        
+        if self.get_rtime() <= 1.2*(self.heuristics.get(self.pos) + self.max_cost*max(self.COST_DIAG, self.COST_LINE)): # 10% safety margin
+            print(f"{self.NAME} No more time to explore (considering exploration cost)... returning to base")
+            vic_set_per_severity = {}
+            self.get_env().print_acum_results()
+            for v in self.victims:
+                print(f"victim id: {v[0]} sev: {self.get_env().sev_label[v[0]]}")
+            self.__return_to_base()
+            return True
+        
+        dir = 0
+        nextDir = self.directions_priorities[dir]
+        nextPos = self.pos[0] + nextDir.value[0], self.pos[1] + nextDir.value[1]
+
+        while (nextPos in self.__visited or self.__is_known_wall(nextDir)) and dir < len(self.directions_priorities):
+            nextDir = self.directions_priorities[dir]
+            nextPos = self.pos[0] + nextDir.value[0], self.pos[1] + nextDir.value[1]
+            dir += 1
+
+        if dir >= len(self.directions_priorities):
+            nextDir = self.path.pop()
+        else:
+            self.path.append(self.__inverse_direction(nextDir)) # add the reverse direction to the path stack
+
+        dx, dy = nextDir.value
+
+
+        self.__walk_and_update_data(nextDir)
+               
         return True
 
+    def __inverse_direction(self, direction):
+        if direction == self.AC_INCR.N:
+            return self.AC_INCR.S
+        elif direction == self.AC_INCR.NE:
+            return self.AC_INCR.SW
+        elif direction == self.AC_INCR.E:
+            return self.AC_INCR.W       
+        elif direction == self.AC_INCR.SE:
+            return self.AC_INCR.NW
+        elif direction == self.AC_INCR.S:
+            return self.AC_INCR.N
+        elif direction == self.AC_INCR.SW:
+            return self.AC_INCR.NE
+        elif direction == self.AC_INCR.W:
+            return self.AC_INCR.E
+        elif direction == self.AC_INCR.NW:
+            return self.AC_INCR.SE
+
+    def __check_walls_and_lim(self):
+        order = [self.AC_INCR.N, self.AC_INCR.NE, self.AC_INCR.E, self.AC_INCR.SE, self.AC_INCR.S, self.AC_INCR.SW, self.AC_INCR.W, self.AC_INCR.NW]
+        walls = self.check_walls_and_lim()
+        for i in range(len(order)):
+            if walls[i] == VS.WALL or walls[i] == VS.END:
+                dir = order[i]
+                dx, dy = dir.value
+                self.walls.add((self.pos[0]+dx, self.pos[1]+dy))
+        
+    def __is_known_wall(self, dir):
+        dx, dy = dir.value
+        return (self.pos[0] + dx, self.pos[1] + dy) in self.walls
+
+    def __update_heuristics(self):
+        self.__visited.add(self.pos)
+
+        mnHeuristics = self.heuristics.get(self.pos) if self.pos in self.heuristics else float("inf")
+        for d in self.directions_priorities:
+            dx, dy = d.value
+            px, py = self.pos[0]+dx, self.pos[1]+dy
+            
+            if (px,py) not in self.heuristics:
+                continue
+            
+            cost = self.heuristics.get((px,py))
+            if self.__is_diag_direction(d):
+                cost += self.COST_DIAG * self.danger_map[(px,py)]
+            else:
+                cost += self.COST_LINE * self.danger_map[(px,py)]
+
+            mnHeuristics = min(mnHeuristics, cost)
+        
+        self.heuristics[self.pos] = mnHeuristics
+    
+        pq = PriorityQueue()
+        pq.put((mnHeuristics, self.pos))
+
+        while not pq.empty():
+            cost, pos = pq.get()
+
+            if self.heuristics.get(pos) < cost:
+                continue
+            
+            heur = self.heuristics.get(pos)
+
+            for d in self.directions_priorities:
+                nei_pos = (pos[0]+d.value[0], pos[1]+d.value[1])
+
+                if nei_pos not in self.__visited:
+                    continue
+                    
+                nei_cost = heur
+                if self.__is_diag_direction(d):
+                    nei_cost += self.COST_DIAG * self.danger_map.get(nei_pos)
+                else:
+                    nei_cost += self.COST_DIAG * self.danger_map.get(nei_pos)
+
+                if nei_cost < self.heuristics.get(nei_pos):
+                    self.heuristics[nei_pos] = nei_cost
+                    pq.put((nei_cost, nei_pos))
+                      
+    def __return_to_base(self):
+        self.state = self.State.RETURNING
+        # TODO: implement return to base based in A*
+        # iterating over the direction priorities
+
+        mn_heur_cost = float("inf")
+        mn_heur_dir = self.directions_priorities[0]
+        for d in self.directions_priorities:
+            nei_pos = self.pos[0] + d.value[0], self.pos[1] + d.value[1]
+            if not nei_pos in self.__visited:
+                continue
+            move_cost = self.COST_DIAG if self.__is_diag_direction(d) else self.COST_LINE
+            move_cost *= self.danger_map.get(nei_pos)
+            if move_cost + self.heuristics.get(nei_pos) < mn_heur_cost:
+                mn_heur_cost = move_cost + self.heuristics.get(nei_pos)
+                mn_heur_dir = d
+
+        dx, dy = mn_heur_dir.value
+        self.heuristics[self.pos] += 1
+        self.__walk_and_update_data(mn_heur_dir)
+
+        return True
+    
+    def __is_diag_direction(self, dir):
+        return dir in [self.AC_INCR.NE, self.AC_INCR.SE, self.AC_INCR.SW, self.AC_INCR.NW]
+
+    def __walk_and_update_data(self, dir, read_victim=True):
+        prevTime = self.get_rtime()
+        dx, dy = dir.value
+        result = self.walk(dx, dy)
+        spentTime = prevTime - self.get_rtime()
+
+        # updates the cost of the current cell (it can change with time)
+        move_cost = self.COST_DIAG if self.__is_diag_direction(dir) else self.COST_LINE
+
+        if result == VS.EXECUTED:
+            # TODO: get current pos cost based on spent time
+            self.pos = self.pos[0]+dx, self.pos[1]+dy
+            self.danger_map[self.pos] = spentTime / move_cost
+            self.max_cost = max(self.max_cost, self.danger_map[self.pos])
+
+            if not read_victim:
+                return True
+            
+            vic_id = self.check_for_victim()            # Check if victim was already visited, avoids double signal reading
+            if vic_id == VS.NO_VICTIM or vic_id in {v[0] for v in self.victims}:
+                return True
+            
+            # TODO: consider reading cost
+            vs = self.read_vital_signals()
+            if vs != VS.TIME_EXCEEDED:
+                self.victims.add((vic_id, tuple(vs), self.pos))

@@ -37,7 +37,7 @@ if __name__ == '__main__':
         cfg_ag_folder = sys.argv[2]
     else:
         cur_folder = Path.cwd()
-        data_folder = os.path.join(cur_folder.parent, "datasets", "data_10v_12x12")
+        data_folder = os.path.join(cur_folder.parent, "datasets", "data_408v_94x94")
         cfg_ag_folder = os.path.join(cur_folder, "cfg_1")
         
     main(data_folder, cfg_ag_folder)
