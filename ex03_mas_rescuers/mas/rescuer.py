@@ -6,6 +6,7 @@ from sklearn.cluster import KMeans
 from vs.constants import VS
 import heapq
 import itertools
+import joblib
 
 
 ## Classe que define o Agente Rescuer com um plano fixo
@@ -32,6 +33,17 @@ class Rescuer(AbstAgent):
         self.victimsOrder = []       # the order of victims to rescue
         
         self.set_state(VS.IDLE)
+        
+        # Load models
+        try:
+            # IMPORTANT: Please update these paths to your .joblib files
+            self.classifier = joblib.load('ml/best_classifier_dt.joblib')
+            self.regressor = joblib.load('ml/best_regressor_dt.joblib')
+            print(f"{self.NAME}: Models loaded successfully.")
+        except FileNotFoundError:
+            self.classifier = None
+            self.regressor = None
+            print(f"{self.NAME}: WARNING - Models not found. Using random severity.")
 
     def cluster_victims(self):
         """
@@ -69,7 +81,7 @@ class Rescuer(AbstAgent):
             with open(filename, "w") as f:
                 for vic_id in cluster:
                     pos = self.victims[vic_id]['pos']
-                    f.write(f"{vic_id},{pos[0]},{pos[1]}\n")
+                    f.write(f"{vic_id},{pos[0]},{pos[1]},{self.victims[vic_id]['severity_value']},{self.victims[vic_id]['severity']}\n")
             print(f"Saved cluster {i} to {filename}")
         
         return clustered_victims
@@ -149,13 +161,34 @@ class Rescuer(AbstAgent):
         print(f"{self.NAME} is now ACTIVE.")
 
     def predict_severity_and_class(self):
-        """ This method assigns a random severity to each victim.
-            Later, this should be replaced by a classifier and a regressor."""
-        # not sure how they will be implemented, depends on the specification (pdf)
-        # for now, just assign a random severity to each victim
-        
-        for vic_id in self.victims:
-            self.victims[vic_id]['severity'] = random.randint(1, 4)
+        """
+        This method predicts severity class and value for each victim using loaded models.
+        If models are not available, it assigns a random severity.
+        """
+        if self.classifier is None or self.regressor is None:
+            # Fallback to random if models are not loaded
+            for vic_id in self.victims:
+                self.victims[vic_id]['severity'] = random.randint(1, 4)
+                self.victims[vic_id]['severity_value'] = self.victims[vic_id]['severity']
+            return
+
+        for vic_id, victim_data in self.victims.items():
+            # The decision tree models expect 3 features in a specific order:
+            # 1. Heart Beat Rate (Pulse Frequency) - index 3
+            # 2. Pressure Quality - index 4
+            # 3. Respiration Frequency - index 5
+            # ['qPA', 'pulse', 'resp_freq']
+            vs = victim_data['vs']
+            filtered_vs = [vs[3], vs[4], vs[5]]
+            vital_signals = np.array(filtered_vs).reshape(1, -1)
+
+            # Predict severity class (1-4)
+            severity_class = self.classifier.predict(vital_signals)[0]
+            self.victims[vic_id]['severity'] = severity_class
+            
+            # Predict severity value (1-100)
+            severity_value = self.regressor.predict(vital_signals)[0]
+            self.victims[vic_id]['severity_value'] = severity_value
         
     def sequencing(self):
         """
@@ -192,7 +225,7 @@ class Rescuer(AbstAgent):
                 # Check if we can visit this victim and still return to base in time
                 if time_spent + cost_to_victim + cost_from_victim_to_base + self.COST_FIRST_AID <= self.TLIM:
                     time_spent += cost_to_victim + self.COST_FIRST_AID
-                    total_severity += (5 - self.victims[next_vic_id].get('severity', 4))
+                    total_severity += self.victims[next_vic_id].get('severity_value', 0)
                     current_id = next_vic_id
                 else:
                     # Not enough time for this victim (and any subsequent ones)
@@ -295,6 +328,14 @@ class Rescuer(AbstAgent):
                 break
         
         self.plan = final_plan
+        
+
+        filename = f"seq{self.NAME}.txt"        
+        with open(filename, "w") as f:
+            for vic_id in self.victimsOrder:
+                pos = self.victims[vic_id]['pos']
+                f.write(f"{vic_id},{pos[0]},{pos[1]},{self.victims[vic_id]['severity_value']},{self.victims[vic_id]['severity']}\n")
+        print(f"Saved sequence {self.NAME} to {filename}")
 
     def _calculate_heuristic(self, pos, destination, min_danger):
         """Calculates the Octile Distance heuristic for A*."""
