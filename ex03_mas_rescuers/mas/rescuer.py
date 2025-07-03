@@ -81,7 +81,12 @@ class Rescuer(AbstAgent):
             with open(filename, "w") as f:
                 for vic_id in cluster:
                     pos = self.victims[vic_id]['pos']
-                    f.write(f"{vic_id},{pos[0]},{pos[1]},{self.victims[vic_id]['severity_value']},{self.victims[vic_id]['severity']}\n")
+                    f.write(f"{vic_id},{pos[0]},{pos[1]},{self.victims[vic_id]['severity_value']},{self.victims[vic_id]['severity']+1}\n")
+            filename = f"cluster.txt"
+            with open(filename, "w") as f:
+                for vic_id in cluster:
+                    pos = self.victims[vic_id]['pos']
+                    f.write(f"{vic_id},{pos[0]},{pos[1]},{self.victims[vic_id]['severity_value']},{self.victims[vic_id]['severity']+1}\n")
             print(f"Saved cluster {i} to {filename}")
         
         return clustered_victims
@@ -205,7 +210,7 @@ class Rescuer(AbstAgent):
         # --- GA Parameters ---
         POPULATION_SIZE = 100
         NUM_GENERATIONS = 1500
-        TOURNAMENT_SIZE = 35
+        TOURNAMENT_SIZE = 50
         MUTATION_RATE = 0.1
         CROSSOVER_RATE = 0.8
         
@@ -326,6 +331,8 @@ class Rescuer(AbstAgent):
                 current_id = vic_id
             else:
                 break
+        # add the base to the final plan
+        final_plan.extend(cost_matrix[best_sequence_so_far[-1]]['BASE']['path'])
         
         self.plan = final_plan
         
@@ -460,11 +467,12 @@ class Rescuer(AbstAgent):
             self.y += dy
 
             pos = self.x, self.y
-            vic_id = self.victimsOrder[0]
-            if pos == self.victims[vic_id]['pos']:
-                self.victimsOrder.pop(0)
-                print(f"{self.NAME} rescued victim {vic_id}")
-                self.first_aid()
+            if len(self.victimsOrder) > 0:
+                vic_id = self.victimsOrder[0]
+                if pos == self.victims[vic_id]['pos']:
+                    self.victimsOrder.pop(0)
+                    print(f"{self.NAME} rescued victim {vic_id}")
+                    self.first_aid()
 
         else:
             print(f"{self.NAME} Plan fail - walk error - agent at ({self.x}, {self.x})")

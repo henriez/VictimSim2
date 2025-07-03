@@ -162,13 +162,13 @@ best_regressor_config = nn_configs[1]
 best_classifier_config = nn_configs[1]
 
 # Train final regressor on all data
-final_regressor = create_model(best_regressor_config, task='regressor', input_shape=X_scaled.shape[1])
-final_regressor.fit(X_scaled, y_reg, epochs=50, verbose=0) 
-final_regressor.save('best_regressor_nn.h5')
-print("\nSaved best NN regressor to 'best_regressor_nn.h5'")
+# final_regressor = create_model(best_regressor_config, task='regressor', input_shape=X_scaled.shape[1])
+# final_regressor.fit(X_scaled, y_reg, epochs=50, verbose=0) 
+# final_regressor.save('best_regressor_nn.h5')
+# print("\nSaved best NN regressor to 'best_regressor_nn.h5'")
 
-# Train final classifier on all data
-final_classifier = create_model(best_classifier_config, task='classifier', input_shape=X_scaled.shape[1])
-final_classifier.fit(X_scaled, y_class, epochs=50, verbose=0)
-final_classifier.save('best_classifier_nn.h5')
-print("Saved best NN classifier to 'best_classifier_nn.h5'")
+# # Train final classifier on all data
+# final_classifier = create_model(best_classifier_config, task='classifier', input_shape=X_scaled.shape[1])
+# final_classifier.fit(X_scaled, y_class, epochs=50, verbose=0)
+# final_classifier.save('best_classifier_nn.h5')
+# print("Saved best NN classifier to 'best_classifier_nn.h5'")

@@ -11,25 +11,25 @@ import os
 # read from cluster1.txt
 cluster0 = []
 cur_folder = os.path.dirname(os.path.abspath(__file__))
-with open(os.path.join(cur_folder, 'clusters/cluster-0.txt'), 'r') as file:
+with open(os.path.join(cur_folder, 'cluster-0.txt'), 'r') as file:
     for line in file:
-        id, x, y = map(int, line.strip().split(','))
+        id, x, y, sv, svc = map(float, line.strip().split(','))
         cluster0.append((x, y))
 
 cluster1 = []
-with open(os.path.join(cur_folder, 'clusters/cluster-1.txt'), 'r') as file:
+with open(os.path.join(cur_folder, 'cluster-1.txt'), 'r') as file:
     for line in file:
-        id, x, y = map(int, line.strip().split(','))
+        id, x, y, sv, svc = map(float, line.strip().split(','))
         cluster1.append((x, y))
 cluster2 = []
-with open(os.path.join(cur_folder, 'clusters/cluster-2.txt'), 'r') as file:
+with open(os.path.join(cur_folder, 'cluster-2.txt'), 'r') as file:
     for line in file:
-        id, x, y = map(int, line.strip().split(','))
+        id, x, y, sv, svc = map(float, line.strip().split(','))
         cluster2.append((x, y))
 cluster3 = []
-with open(os.path.join(cur_folder, 'clusters/cluster-3.txt'), 'r') as file:
+with open(os.path.join(cur_folder, 'cluster-3.txt'), 'r') as file:
     for line in file:
-        id, x, y = map(int, line.strip().split(','))
+        id, x, y, sv, svc = map(float, line.strip().split(','))
         cluster3.append((x, y))
 
 # Unpack the points for each cluster

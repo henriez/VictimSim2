@@ -46,7 +46,7 @@ class Explorer(AbstAgent):
         if self.NAME == 'EXPL_3':
             self.directions_priorities = [self.AC_INCR.S, self.AC_INCR.SW, self.AC_INCR.W, self.AC_INCR.NW, self.AC_INCR.N, self.AC_INCR.NE, self.AC_INCR.E, self.AC_INCR.SE]
         if self.NAME == 'EXPL_4':
-            self.directions_priorities = [self.AC_INCR.SE, self.AC_INCR.S, self.AC_INCR.E, self.AC_INCR.NE, self.AC_INCR.N, self.AC_INCR.NW, self.AC_INCR.W, self.AC_INCR.SW]
+            self.directions_priorities = [self.AC_INCR.S, self.AC_INCR.SE, self.AC_INCR.E, self.AC_INCR.NE, self.AC_INCR.N, self.AC_INCR.NW, self.AC_INCR.W, self.AC_INCR.SW]
         self.path = []
         self.pos = (0,0)
         self.walls = set()
